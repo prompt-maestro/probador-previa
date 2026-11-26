@@ -61,8 +61,10 @@ export function inversa(m) {
   return { a: m.d / det, b: -m.b / det, c: -m.c / det, d: m.a / det, e: (m.c * m.f - m.d * m.e) / det, f: (m.b * m.e - m.a * m.f) / det };
 }
 
-// De la mascara de un recorte saca la uña: se queda con la mancha mas cercana al centro y mide su eje, largo y ancho
-export function medirUna(prob, desde) {
+// De la mascara de un recorte saca la uña: se queda con la mancha sobre el eje del dedo y mide su eje, largo y ancho.
+// lateral: cuanto puede alejarse la uña del eje del dedo, en fraccion del ancho del recorte (a lo ancho los puntos de la mano
+// casi no se equivocan; a lo largo si, por eso alla hay mas holgura)
+export function medirUna(prob, desde, lateral = 0.2) {
   const umbral = 0.5;
   const vista = new Uint8Array(ANCHO * ALTO);
   let mejor = null;
@@ -88,8 +90,8 @@ export function medirUna(prob, desde) {
     for (const k of pix) { sx += k % ANCHO; sy += (k / ANCHO) | 0; sp += prob[desde + k]; }
     const cx = sx / pix.length, cy = sy / pix.length;
     if (sp / pix.length < 0.72) continue;
-    if (Math.abs(cx - ANCHO / 2) > ANCHO * 0.36 || Math.abs(cy - ALTO / 2) > ALTO * 0.36) continue;
-    const dist = Math.hypot(cx - ANCHO / 2, cy - ALTO / 2) - Math.sqrt(pix.length) * 0.5;
+    if (Math.abs(cx - ANCHO / 2) > ANCHO * lateral || Math.abs(cy - ALTO / 2) > ALTO * 0.36) continue;
+    const dist = Math.abs(cx - ANCHO / 2) * 2.5 + Math.abs(cy - ALTO / 2) - Math.sqrt(pix.length) * 0.5;
     if (!mejor || dist < mejor.dist) mejor = { pix, cx, cy, dist };
   }
   if (!mejor) return null;

@@ -345,12 +345,19 @@ async function correrDetector() {
     sucio = true;
   }
 }
+// A lo ancho, los puntos de la mano casi no se equivocan: la uña de un dedo queda sobre su eje (el pulgar, que se ve de lado,
+// tiene mas holgura). Asi el recorte nunca "se va caminando" hacia el dedo de junto o al hueco entre dos dedos
+const LATERAL = [0.3, 0.2, 0.2, 0.2, 0.2];
+const LATERAL_MAX = [0.6, 0.25, 0.25, 0.25, 0.25];
 function guardarUna(i, prob, desde, off) {
-  const m = medirUna(prob, desde);
+  const m = medirUna(prob, desde, LATERAL[i]);
   const previo = recortes[i];
   if (!m) {
     if (previo) previo.faltas++;
     if (previo && previo.faltas > 4) recortes[i] = null;
+    // Si deja de encontrarla, el recorte regresa poco a poco a donde dicen los puntos de la mano
+    const o = corrimiento[i];
+    o.x *= 0.6; o.y *= 0.8; o.k += (1 - o.k) * 0.3;
     return;
   }
   // Solo la mancha de la uña de este dedo (con su orilla suave)
@@ -371,7 +378,7 @@ function guardarUna(i, prob, desde, off) {
   // Que el proximo recorte quede con la uña al centro y del tamaño justo
   const px = (2.2 * off.k) / 48; // un pixel del recorte, en anchos de uña estimados
   const o = corrimiento[i];
-  o.x = Math.max(-0.9, Math.min(0.9, o.x + 0.5 * (m.cx - 24) * px));
+  o.x = Math.max(-LATERAL_MAX[i], Math.min(LATERAL_MAX[i], o.x + 0.3 * (m.cx - 24) * px));
   o.y = Math.max(-0.9, Math.min(1.2, o.y - 0.5 * (m.cy - 32) * px));
   o.k = Math.max(0.7, Math.min(1.7, o.k + 0.3 * (m.ancho * px * 1.0 - o.k)));
 }
