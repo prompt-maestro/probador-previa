@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; img-src 'self' blob: data:; media-src 'self' blob: mediastream:; style-src 'self'; worker-src 'self' blob:; base-uri 'none'; form-action 'none'">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#121216">
+<title>Probador de diseños · prototipo</title>
+<link rel="stylesheet" href="estilos.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<main id="app">
+  <!-- Pantalla de inicio: antes del permiso de la camara -->
+  <section id="inicio" class="pantalla">
+    <div class="inicio-caja">
+      <p class="marca">Studio Bella</p>
+      <h1>Pruébate los diseños de Bella en tu mano</h1>
+      <p class="inicio-texto">Con la cámara de tu celular, en vivo. La imagen se queda en tu celular: no se graba ni se envía.</p>
+      <div class="muestras" aria-hidden="true">
+        <img src="fotos/c-french.webp" alt=""><img src="fotos/c-cereza.webp" alt=""><img src="fotos/c-oro.webp" alt=""><img src="fotos/c-perla.webp" alt=""><img src="fotos/c-rosa.webp" alt="">
+      </div>
+      <button id="btn-camara" class="boton principal" type="button" disabled>Preparando…</button>
+      <div id="avance" class="avance" aria-hidden="true"><span></span></div>
+      <p id="avance-texto" class="avance-texto">Preparando el probador (solo la primera vez tarda un poco)</p>
+      <label class="boton secundario" id="lbl-foto">Usar una foto de mi mano<input id="input-foto" type="file" accept="image/*" hidden></label>
+      <button id="btn-ejemplo" class="enlace" type="button">Ver con una mano de ejemplo</button>
+      <p class="pie">Prototipo de Prompt Maestro para probar la cámara. Los diseños y precios son de ejemplo.</p>
+    </div>
+  </section>
+
+  <!-- Probador -->
+  <section id="probador" class="pantalla oculto" aria-label="Probador de diseños">
+    <div id="escena">
+      <canvas id="lienzo" aria-label="Tu mano con el diseño"></canvas>
+      <video id="video" playsinline muted autoplay></video>
+    </div>
+
+    <div class="barra-arriba">
+      <button id="btn-ajustes" class="pastilla" type="button" aria-label="Ajustes de prueba">⚙︎ Ajustes</button>
+      <button id="btn-pausa" class="pastilla" type="button"><span class="punto-vivo"></span><span id="txt-pausa">En vivo</span></button>
+    </div>
+
+    <p id="aviso" class="aviso oculto" role="status"></p>
+    <button id="btn-luz" class="pastilla luz oculto" type="button">Encender luz</button>
+
+    <div id="hoja" class="hoja">
+      <!-- Vista de toda la mano -->
+      <div id="vista-mano">
+        <div class="fila-titulo">
+          <div>
+            <p id="nombre" class="nombre">French clásico</p>
+            <p id="resumen" class="resumen">$380 · 1 h 30</p>
+          </div>
+          <button id="btn-deshacer" class="deshacer" type="button" disabled>↺ Deshacer</button>
+        </div>
+        <div id="catalogo" class="catalogo" role="listbox" aria-label="Diseños de Bella"></div>
+        <p class="ayuda">¿Quieres una uña distinta? Tócala aquí abajo.</p>
+        <div id="tira" class="tira" role="group" aria-label="Tus cinco uñas"></div>
+        <div class="ideas" role="group" aria-label="Ideas para tu mano">
+          <button class="idea" type="button" data-idea="uno">Un acento</button>
+          <button class="idea" type="button" data-idea="dos">Dos acentos</button>
+          <button class="idea" type="button" data-idea="todas">Cada uña distinta</button>
+        </div>
+        <button id="btn-elegir" class="boton principal" type="button">Elegir este diseño</button>
+      </div>
+
+      <!-- Vista de una uña -->
+      <div id="vista-una" class="oculto">
+        <p class="titulo-una"><b id="nombre-una">Para tu anular</b> <span>primero los que combinan</span></p>
+        <div id="opciones" class="opciones" role="listbox"></div>
+        <div id="tira2" class="tira" role="group" aria-label="Tus cinco uñas"></div>
+        <div class="fila-titulo">
+          <p id="resumen2" class="resumen">Tu mezcla · $400 · 1 h 30</p>
+          <button id="btn-deshacer2" class="deshacer" type="button" disabled>↺ Deshacer</button>
+        </div>
+        <button id="btn-listo" class="boton blanco" type="button">Listo</button>
+      </div>
+    </div>
+
+    <!-- Ajustes de prueba (solo para el prototipo) -->
+    <div id="ajustes" class="panel oculto" role="dialog" aria-label="Ajustes de prueba">
+      <p class="panel-titulo">Ajustes de prueba</p>
+      <div class="ajuste"><span>Largo de uña</span><div class="segmentos" data-ajuste="largo"><button data-v="corto">Corto</button><button data-v="medio">Medio</button><button data-v="largo">Largo</button></div></div>
+      <div class="ajuste"><span>Ancho</span><div class="segmentos" data-ajuste="ancho"><button data-v="0.88">Menos</button><button data-v="1">Normal</button><button data-v="1.12">Más</button></div></div>
+      <div class="ajuste"><span>Ver los puntos de la mano</span><div class="segmentos" data-ajuste="puntos"><button data-v="no">No</button><button data-v="si">Sí</button></div></div>
+      <div class="ajuste"><span>Cámara</span><div class="segmentos" data-ajuste="camara"><button data-v="trasera">Trasera</button><button data-v="frontal">Frontal</button></div></div>
+      <pre id="medidas" class="medidas">Midiendo…</pre>
+      <button id="btn-cerrar-ajustes" class="boton blanco" type="button">Cerrar</button>
+    </div>
+
+    <!-- Lo que pasaria al elegir -->
+    <div id="eleccion" class="panel oculto" role="dialog" aria-label="Tu elección">
+      <p class="panel-titulo">Así le llegaría a Bella</p>
+      <div class="ficha">
+        <div id="ficha-unas" class="ficha-unas"></div>
+        <p id="ficha-nombre" class="ficha-nombre">Tu mezcla · 5 diseños de Bella</p>
+        <p id="ficha-detalle" class="ficha-detalle">Alrededor de 1 h 30 · $410</p>
+        <p class="ficha-codigo">Código <b id="ficha-codigo">M7KQ2</b></p>
+      </div>
+      <p class="panel-texto">En la versión real aquí se abre tu WhatsApp con tu elección ya escrita y el asistente te ofrece los horarios donde cabe. En este prototipo no se envía nada.</p>
+      <button id="btn-cerrar-eleccion" class="boton blanco" type="button">Seguir probando</button>
+    </div>
+  </section>
+</main>
+</body>
+</html>
