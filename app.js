@@ -433,9 +433,8 @@ function dibujarUnaDetectada(g, dis, i, r, marco, luz, marcada) {
   c.globalCompositeOperation = "source-over";
   g.save();
   g.setTransform(marco.a / 2, marco.b / 2, marco.c / 2, marco.d / 2, marco.e, marco.f);
-  if (marcada) { g.shadowColor = "#6d84ff"; g.shadowBlur = 14; }
+  // La uña elegida se marca solo en la tira de abajo: sobre la mano, nada que le quite realismo (Jose, 25-nov-2026)
   g.drawImage(capa, 0, 0);
-  if (marcada) g.drawImage(capa, 0, 0);
   g.restore();
 }
 
@@ -587,15 +586,6 @@ function dibujarUna(g, dis, i, geo, luz, marcada) {
   g.lineWidth = Math.max(0.6, W * 0.025);
   g.strokeStyle = "rgba(70,30,30,0.3)";
   g.stroke();
-  if (marcada) {
-    g.save();
-    g.scale(1.22, 1.12);
-    almendra(g, W, L);
-    g.restore();
-    g.lineWidth = Math.max(2, W * 0.07);
-    g.strokeStyle = "#6d84ff";
-    g.stroke();
-  }
   g.restore();
 }
 
