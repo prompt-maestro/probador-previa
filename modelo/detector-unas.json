@@ -1,0 +1,216 @@
+{
+ "version": 1,
+ "ancho": 48,
+ "alto": 64,
+ "capas": [
+  {
+   "nombre": "e1.0.weight",
+   "forma": [
+    3,
+    3,
+    3,
+    12
+   ],
+   "desde": 0,
+   "cuantos": 324
+  },
+  {
+   "nombre": "e1.0.bias",
+   "forma": [
+    12
+   ],
+   "desde": 324,
+   "cuantos": 12
+  },
+  {
+   "nombre": "e1.2.weight",
+   "forma": [
+    3,
+    3,
+    12,
+    12
+   ],
+   "desde": 336,
+   "cuantos": 1296
+  },
+  {
+   "nombre": "e1.2.bias",
+   "forma": [
+    12
+   ],
+   "desde": 1632,
+   "cuantos": 12
+  },
+  {
+   "nombre": "e2.0.weight",
+   "forma": [
+    3,
+    3,
+    12,
+    24
+   ],
+   "desde": 1644,
+   "cuantos": 2592
+  },
+  {
+   "nombre": "e2.0.bias",
+   "forma": [
+    24
+   ],
+   "desde": 4236,
+   "cuantos": 24
+  },
+  {
+   "nombre": "e2.2.weight",
+   "forma": [
+    3,
+    3,
+    24,
+    24
+   ],
+   "desde": 4260,
+   "cuantos": 5184
+  },
+  {
+   "nombre": "e2.2.bias",
+   "forma": [
+    24
+   ],
+   "desde": 9444,
+   "cuantos": 24
+  },
+  {
+   "nombre": "e3.0.weight",
+   "forma": [
+    3,
+    3,
+    24,
+    32
+   ],
+   "desde": 9468,
+   "cuantos": 6912
+  },
+  {
+   "nombre": "e3.0.bias",
+   "forma": [
+    32
+   ],
+   "desde": 16380,
+   "cuantos": 32
+  },
+  {
+   "nombre": "e3.2.weight",
+   "forma": [
+    3,
+    3,
+    32,
+    32
+   ],
+   "desde": 16412,
+   "cuantos": 9216
+  },
+  {
+   "nombre": "e3.2.bias",
+   "forma": [
+    32
+   ],
+   "desde": 25628,
+   "cuantos": 32
+  },
+  {
+   "nombre": "d2.0.weight",
+   "forma": [
+    3,
+    3,
+    56,
+    24
+   ],
+   "desde": 25660,
+   "cuantos": 12096
+  },
+  {
+   "nombre": "d2.0.bias",
+   "forma": [
+    24
+   ],
+   "desde": 37756,
+   "cuantos": 24
+  },
+  {
+   "nombre": "d2.2.weight",
+   "forma": [
+    3,
+    3,
+    24,
+    24
+   ],
+   "desde": 37780,
+   "cuantos": 5184
+  },
+  {
+   "nombre": "d2.2.bias",
+   "forma": [
+    24
+   ],
+   "desde": 42964,
+   "cuantos": 24
+  },
+  {
+   "nombre": "d1.0.weight",
+   "forma": [
+    3,
+    3,
+    36,
+    12
+   ],
+   "desde": 42988,
+   "cuantos": 3888
+  },
+  {
+   "nombre": "d1.0.bias",
+   "forma": [
+    12
+   ],
+   "desde": 46876,
+   "cuantos": 12
+  },
+  {
+   "nombre": "d1.2.weight",
+   "forma": [
+    3,
+    3,
+    12,
+    12
+   ],
+   "desde": 46888,
+   "cuantos": 1296
+  },
+  {
+   "nombre": "d1.2.bias",
+   "forma": [
+    12
+   ],
+   "desde": 48184,
+   "cuantos": 12
+  },
+  {
+   "nombre": "fin.weight",
+   "forma": [
+    1,
+    1,
+    12,
+    1
+   ],
+   "desde": 48196,
+   "cuantos": 12
+  },
+  {
+   "nombre": "fin.bias",
+   "forma": [
+    1
+   ],
+   "desde": 48208,
+   "cuantos": 1
+  }
+ ]
+}

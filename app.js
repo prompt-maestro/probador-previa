@@ -2,6 +2,7 @@
 // Todo corre en el celular: la imagen de la camara nunca sale del navegador (no hay ninguna llamada de red despues de cargar).
 // La mano la sigue MediaPipe Hand Landmarker (version exacta 0.10.35, alojada aqui mismo); las uñas se pintan con canvas, sin IA.
 import { FilesetResolver, HandLandmarker } from "./vendor/tasks-vision-0.10.35/vision_bundle.mjs";
+import { cargarDetector, marcoDelRecorte, inversa, medirUna } from "./detector.js";
 
 // ---------- Diseños de ejemplo (nombres y precios de la previa de la pagina) ----------
 const DISENOS = [
@@ -101,12 +102,22 @@ const estado = {
   ancho: 1,
   puntos: false,
   camara: "trasera",
+  detector: true, // detector de uñas propio: el diseño va donde esta la uña de verdad
   orden: [4, 3, 2, 1, 0], // dedos de izquierda a derecha en la pantalla
 };
 let marcador = null, delegado = "", flujo = null, pista = null, luzPrendida = false, puedeLuz = false;
 let mano = null, ultimaMano = 0, ordenCandidato = "", ordenVeces = 0, luzEscena = 1, lumaEscena = 0.5;
 let filtros = null, sucio = true, ultimoTiempoVideo = -1, ts = 0, cuadros = 0;
-const medidas = { cps: 0, msModelo: 0, cuentaMs: 0, sumaMs: 0, desde: performance.now(), lentoDesde: 0, avisoLento: false };
+let detector = null, detectorOcupado = false;
+const recortes = Array(5).fill(null); // por dedo: lo ultimo que encontro el detector
+const corrimiento = Array.from({ length: 5 }, () => ({ x: 0, y: 0, k: 1 })); // el recorte sigue a la uña encontrada
+const tira = document.createElement("canvas"), tctx = tira.getContext("2d");
+const capas = Array.from({ length: 5 }, () => { const c = document.createElement("canvas"); c.width = 96; c.height = 128; return c; });
+const mascaraCv = document.createElement("canvas");
+mascaraCv.width = 48;
+mascaraCv.height = 64;
+const mctx = mascaraCv.getContext("2d");
+const medidas = { msUnas: 0, cps: 0, msModelo: 0, cuentaMs: 0, sumaMs: 0, desde: performance.now(), lentoDesde: 0, avisoLento: false };
 
 const video = $("#video"), lienzo = $("#lienzo"), ctx = lienzo.getContext("2d");
 const fondo = document.createElement("canvas"), fctx = fondo.getContext("2d");
@@ -141,6 +152,8 @@ async function bajarConAvance(url, alAvance) {
 const tiempos = { inicio: performance.now(), listo: 0, permiso: 0, primerCuadro: 0, pedido: 0 };
 async function cargar() {
   const barra = $("#avance span"), texto = $("#avance-texto");
+  // El detector de uñas se prepara al mismo tiempo que el seguimiento de la mano
+  const promDetector = cargarDetector("modelo/").catch((e) => { console.warn("Sin detector de uñas", e); estado.detector = false; return null; });
   try {
     // El modelo de la mano y el motor (wasm) bajan al mismo tiempo (el HTML ya los pidio con preload)
     const [modelo, archivos] = await Promise.all([
@@ -159,6 +172,7 @@ async function cargar() {
     try { marcador = await HandLandmarker.createFromOptions(archivos, opciones("GPU")); delegado = "GPU"; }
     catch { marcador = await HandLandmarker.createFromOptions(archivos, opciones("CPU")); delegado = "CPU"; }
     await calentar();
+    detector = await promDetector;
     tiempos.listo = performance.now();
     barra.style.width = "100%";
     texto.textContent = "";
@@ -166,7 +180,8 @@ async function cargar() {
     const b = $("#btn-camara");
     b.disabled = false;
     b.textContent = "Abrir mi cámara";
-    if (new URLSearchParams(location.search).has("ejemplo")) abrirFoto("fotos/mano-ejemplo.webp");
+    const ejemplo = new URLSearchParams(location.search).get("ejemplo");
+    if (ejemplo !== null) abrirFoto(/^prueba\/[\w.-]+$/.test(ejemplo) ? ejemplo : "fotos/mano-ejemplo.webp");
   } catch (e) {
     texto.textContent = "No pude preparar el probador en este navegador. Prueba en Chrome o Safari actualizados.";
     console.error(e);
@@ -243,8 +258,13 @@ async function abrirFoto(fuente) {
   lienzo.classList.remove("espejo");
   mostrarProbador();
   reiniciarFiltros();
+  olvidarUnas();
   detectar();
   if (!mano) avisar("No encontré una mano en la foto. Prueba con otra donde se vean tus uñas.");
+  else if (detector && estado.detector) {
+    // En una foto se busca tres veces: cada vuelta con el recorte mas centrado en cada uña
+    for (let k = 0; k < 3; k++) await correrDetector();
+  }
 }
 function mostrarProbador() {
   $("#inicio").classList.add("oculto");
@@ -268,7 +288,7 @@ function procesar(r, t) {
   if (depurar) window.ultimoResultado = { landmarks: r.landmarks, worldLandmarks: r.worldLandmarks, handedness: r.handedness ?? r.handednesses };
   const lm = r.landmarks?.[0];
   if (!lm) {
-    if (t - ultimaMano > 250) { mano = null; reiniciarFiltros(); }
+    if (t - ultimaMano > 250) { mano = null; reiniciarFiltros(); olvidarUnas(); }
     sucio = true;
     return;
   }
@@ -286,16 +306,142 @@ function procesar(r, t) {
   if ((ordenVeces >= 6 || estado.modo === "foto") && clave !== estado.orden.join("")) { estado.orden = orden; pintarTiras(); }
   sucio = true;
 }
+// ---------- Detector de uñas ----------
+function olvidarUnas() {
+  for (let i = 0; i < 5; i++) { recortes[i] = null; Object.assign(corrimiento[i], { x: 0, y: 0, k: 1 }); }
+}
+// Donde va el recorte de cada dedo: la uña estimada por los puntos de la mano, corrida hacia donde el detector la encontro
+function marcoDe(i, geo, off) {
+  const c = { x: geo.c.x + (geo.v.x * off.x + geo.u.x * off.y) * geo.W, y: geo.c.y + (geo.v.y * off.x + geo.u.y * off.y) * geo.W };
+  return marcoDelRecorte(c, geo.u, geo.W * 2.2 * off.k);
+}
+async function correrDetector() {
+  if (!detector || detectorOcupado || !mano || !estado.detector) return;
+  detectorOcupado = true;
+  try {
+    const esc = escalaMano(mano.pts);
+    const geos = DEDOS.map((_, i) => geometriaUna(mano.pts, i, esc, "natural"));
+    const offs = corrimiento.map((o) => ({ ...o }));
+    const marcos = geos.map((g, i) => marcoDe(i, g, offs[i]));
+    tira.width = 48 * 5;
+    tira.height = 64;
+    for (let i = 0; i < 5; i++) {
+      const inv = inversa(marcos[i]);
+      tctx.save();
+      tctx.setTransform(1, 0, 0, 1, 0, 0);
+      tctx.beginPath();
+      tctx.rect(i * 48, 0, 48, 64);
+      tctx.clip();
+      tctx.setTransform(inv.a, inv.b, inv.c, inv.d, inv.e + i * 48, inv.f);
+      tctx.drawImage(fondo, 0, 0);
+      tctx.restore();
+    }
+    const t0 = performance.now();
+    const prob = await detector.correr(tira, 5);
+    medidas.msUnas = performance.now() - t0;
+    for (let i = 0; i < 5; i++) guardarUna(i, prob, i * 48 * 64, offs[i]);
+  } finally {
+    detectorOcupado = false;
+    sucio = true;
+  }
+}
+function guardarUna(i, prob, desde, off) {
+  const m = medirUna(prob, desde);
+  const previo = recortes[i];
+  if (!m) {
+    if (previo) previo.faltas++;
+    if (previo && previo.faltas > 4) recortes[i] = null;
+    return;
+  }
+  // Solo la mancha de la uña de este dedo (con su orilla suave)
+  const elegida = new Uint8Array(48 * 64);
+  for (const k of m.pix) elegida[k] = 1;
+  const nueva = new Float32Array(48 * 64);
+  for (let k = 0; k < nueva.length; k++) {
+    const x = k % 48, y = (k / 48) | 0;
+    let cerca = elegida[k];
+    if (!cerca) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx >= 0 && ny >= 0 && nx < 48 && ny < 64 && elegida[ny * 48 + nx]) { cerca = 1; break; } }
+    nueva[k] = cerca ? prob[desde + k] : 0;
+  }
+  const mismoMarco = previo && Math.abs(previo.off.x - off.x) + Math.abs(previo.off.y - off.y) + Math.abs(previo.off.k - off.k) < 0.04;
+  const peso = estado.modo === "foto" || !mismoMarco ? 0 : 0.45;
+  const mascara = new Float32Array(48 * 64);
+  for (let k = 0; k < mascara.length; k++) mascara[k] = peso ? previo.mascara[k] * peso + nueva[k] * (1 - peso) : nueva[k];
+  recortes[i] = { mascara, medida: m, off, faltas: 0 };
+  // Que el proximo recorte quede con la uña al centro y del tamaño justo
+  const px = (2.2 * off.k) / 48; // un pixel del recorte, en anchos de uña estimados
+  const o = corrimiento[i];
+  o.x = Math.max(-0.9, Math.min(0.9, o.x + 0.5 * (m.cx - 24) * px));
+  o.y = Math.max(-0.9, Math.min(1.2, o.y - 0.5 * (m.cy - 32) * px));
+  o.k = Math.max(0.7, Math.min(1.7, o.k + 0.3 * (m.ancho * px * 1.0 - o.k)));
+}
+// Orilla sin escalones: promedio 3x3 de la mascara chica antes de agrandarla
+function suavizar(m) {
+  const o = new Float32Array(m.length);
+  for (let y = 0; y < 64; y++) {
+    for (let x = 0; x < 48; x++) {
+      let s = 0, n = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx, yy = y + dy;
+          if (xx >= 0 && yy >= 0 && xx < 48 && yy < 64) { s += m[yy * 48 + xx]; n++; }
+        }
+      }
+      o[y * 48 + x] = s / n;
+    }
+  }
+  return o;
+}
+function dibujarUnaDetectada(g, dis, i, r, marco, luz, marcada) {
+  const capa = capas[i], c = capa.getContext("2d");
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.clearRect(0, 0, 96, 128);
+  const m = r.medida;
+  let ux = -m.pend, uy = -1;
+  const n = Math.hypot(ux, uy);
+  ux /= n; uy /= n;
+  const vx = -uy, vy = ux;
+  const W = m.ancho * 1.06, L = m.largo * 1.04;
+  c.setTransform(2 * vx, 2 * vy, -2 * ux, -2 * uy, 2 * m.cx, 2 * m.cy);
+  pintarDiseno(c, dis, i, W, L, Math.atan2(marco.d, marco.c));
+  if (luz < 0.98) {
+    const k = Math.round(255 * luz);
+    c.globalCompositeOperation = "multiply";
+    c.fillStyle = `rgb(${k},${k},${k})`;
+    c.fillRect(-W, -L, 2 * W, 2 * L);
+    c.globalCompositeOperation = "source-over";
+  }
+  const img = mctx.createImageData(48, 64);
+  const suave = suavizar(r.mascara);
+  for (let k = 0; k < r.mascara.length; k++) {
+    const a = Math.max(0, Math.min(1, (suave[k] - 0.15) / 0.35));
+    img.data[k * 4] = img.data[k * 4 + 1] = img.data[k * 4 + 2] = 255;
+    img.data[k * 4 + 3] = Math.round(a * 255);
+  }
+  mctx.putImageData(img, 0, 0);
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.globalCompositeOperation = "destination-in";
+  c.imageSmoothingEnabled = true;
+  c.drawImage(mascaraCv, 0, 0, 96, 128);
+  c.globalCompositeOperation = "source-over";
+  g.save();
+  g.setTransform(marco.a / 2, marco.b / 2, marco.c / 2, marco.d / 2, marco.e, marco.f);
+  if (marcada) { g.shadowColor = "#6d84ff"; g.shadowBlur = 14; }
+  g.drawImage(capa, 0, 0);
+  if (marcada) g.drawImage(capa, 0, 0);
+  g.restore();
+}
+
 function escalaMano(p) {
   const d = (i, j) => Math.hypot(p[i].x - p[j].x, p[i].y - p[j].y);
   return (d(5, 9) + d(9, 13) + d(13, 17)) / 3;
 }
-function geometriaUna(p, i, escala) {
+function geometriaUna(p, i, escala, largo = estado.largo) {
   const dedo = DEDOS[i];
   const a = p[dedo.dip], b = p[dedo.tip];
   const ux = b.x - a.x, uy = b.y - a.y, len = Math.hypot(ux, uy) || 1;
   const u = { x: ux / len, y: uy / len }, v = { x: -u.y, y: u.x };
-  const t1 = LARGOS[estado.largo] - (i === 0 ? 0.04 : 0);
+  const t1 = LARGOS[largo] - (i === 0 ? 0.04 : 0);
   const tm = (dedo.t0 + t1) / 2;
   const W = dedo.ancho * escala * estado.ancho;
   const L = Math.max((t1 - dedo.t0) * len, W * 0.35);
@@ -464,7 +610,15 @@ function pintar() {
     const esc = escalaMano(mano.pts);
     const geos = DEDOS.map((_, i) => geometriaUna(mano.pts, i, esc));
     mano.geos = geos;
-    for (const i of [4, 3, 2, 1, 0]) dibujarUna(ctx, POR_CLAVE[estado.unas[i]], i, geos[i], luzEscena, estado.seleccion === i);
+    if (detector && estado.detector) {
+      const geosN = DEDOS.map((_, i) => geometriaUna(mano.pts, i, esc, "natural"));
+      for (const i of [4, 3, 2, 1, 0]) {
+        const r = recortes[i];
+        if (r) dibujarUnaDetectada(ctx, POR_CLAVE[estado.unas[i]], i, r, marcoDe(i, geosN[i], r.off), luzEscena, estado.seleccion === i);
+      }
+    } else {
+      for (const i of [4, 3, 2, 1, 0]) dibujarUna(ctx, POR_CLAVE[estado.unas[i]], i, geos[i], luzEscena, estado.seleccion === i);
+    }
   }
   if (mano && estado.puntos) {
     ctx.fillStyle = "#39ff9e";
@@ -494,6 +648,7 @@ function ciclo() {
     fctx.drawImage(video, 0, 0, fondo.width, fondo.height);
     if (!tiempos.primerCuadro) { tiempos.primerCuadro = performance.now() - tiempos.pedido; avisoFijo = null; }
     detectar();
+    correrDetector();
     cuadros++;
     if (cuadros % 15 === 0) medirLuz();
   }
@@ -515,6 +670,7 @@ function escribirMedidas() {
   $("#medidas").textContent = [
     `Cuadros por segundo: ${vivo ? medidas.cps : "en pausa"}`,
     `Modelo por cuadro: ${medidas.msModelo.toFixed(1)} ms (${delegado})`,
+    `Detector de uñas: ${detector ? `${medidas.msUnas.toFixed(1)} ms (${detector.backend})` : "no cargó"}`,
     `Imagen: ${fondo.width} x ${fondo.height}`,
     `Listo para usar: ${tiempos.listo ? ((tiempos.listo - tiempos.inicio) / 1000).toFixed(1) : "?"} s después de abrir la página`,
     `Cámara: permiso ${(tiempos.permiso / 1000).toFixed(1)} s, primera imagen ${(tiempos.primerCuadro / 1000).toFixed(1)} s`,
@@ -730,6 +886,7 @@ function conectar() {
       if (cual === "largo") estado.largo = v;
       if (cual === "ancho") estado.ancho = Number(v);
       if (cual === "puntos") estado.puntos = v === "si";
+      if (cual === "detector") { estado.detector = v === "si"; if (estado.modo === "foto" && estado.detector) { correrDetector().then(correrDetector); } }
       if (cual === "camara" && v !== estado.camara) { estado.camara = v; if (estado.modo === "camara") abrirCamara(); }
       pintarAjustes();
       sucio = true;
@@ -756,7 +913,7 @@ function salir() {
   pintarHoja();
 }
 function pintarAjustes() {
-  const valores = { largo: estado.largo, ancho: String(estado.ancho), puntos: estado.puntos ? "si" : "no", camara: estado.camara };
+  const valores = { detector: estado.detector ? "si" : "no", largo: estado.largo, ancho: String(estado.ancho), puntos: estado.puntos ? "si" : "no", camara: estado.camara };
   for (const g of document.querySelectorAll(".segmentos")) {
     for (const b of g.children) b.classList.toggle("activo", b.dataset.v === valores[g.dataset.ajuste]);
   }

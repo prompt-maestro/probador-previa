@@ -12,6 +12,10 @@
 <link rel="preload" href="modelo/hand_landmarker-float16-v1.task" as="fetch" crossorigin>
 <link rel="preload" href="vendor/tasks-vision-0.10.35/wasm/vision_wasm_internal.wasm" as="fetch" crossorigin>
 <link rel="modulepreload" href="vendor/tasks-vision-0.10.35/vision_bundle.mjs">
+<link rel="preload" href="modelo/detector-unas.bin" as="fetch" crossorigin>
+<link rel="preload" href="modelo/detector-unas.json" as="fetch" crossorigin>
+<script defer src="vendor/tfjs-4.22.0/tf-core.min.js"></script>
+<script defer src="vendor/tfjs-4.22.0/tf-backend-webgl.min.js"></script>
 <script type="module" src="app.js"></script>
 </head>
 <body>
@@ -89,7 +93,8 @@
     <!-- Ajustes de prueba (solo para el prototipo) -->
     <div id="ajustes" class="panel oculto" role="dialog" aria-label="Ajustes de prueba">
       <p class="panel-titulo">Ajustes de prueba</p>
-      <div class="ajuste"><span>Largo de uña</span><div class="segmentos" data-ajuste="largo"><button data-v="natural">Natural</button><button data-v="medio">Medio</button><button data-v="largo">Largo</button></div></div>
+      <div class="ajuste"><span>Detector de uñas</span><div class="segmentos" data-ajuste="detector"><button data-v="si">Sí</button><button data-v="no">No (como antes)</button></div></div>
+      <div class="ajuste"><span>Largo de uña (sin detector)</span><div class="segmentos" data-ajuste="largo"><button data-v="natural">Natural</button><button data-v="medio">Medio</button><button data-v="largo">Largo</button></div></div>
       <div class="ajuste"><span>Ancho</span><div class="segmentos" data-ajuste="ancho"><button data-v="0.88">Menos</button><button data-v="1">Normal</button><button data-v="1.12">Más</button></div></div>
       <div class="ajuste"><span>Ver los puntos de la mano</span><div class="segmentos" data-ajuste="puntos"><button data-v="no">No</button><button data-v="si">Sí</button></div></div>
       <div class="ajuste"><span>Cámara</span><div class="segmentos" data-ajuste="camara"><button data-v="trasera">Trasera</button><button data-v="frontal">Frontal</button></div></div>
