@@ -17,13 +17,13 @@ const VERSION_CATALOGO = 1;
 // Dedos en orden anatomico: 0 pulgar, 1 indice, 2 medio, 3 anular, 4 meñique (puntos de MediaPipe).
 // ancho: ancho de la uña contra la distancia promedio entre nudillos; t0: donde empieza la uña entre la ultima articulacion y la punta
 const DEDOS = [
-  { nombre: "Pulgar", para: "tu pulgar", raiz: 2, dip: 3, tip: 4, ancho: 0.8, t0: 0.32 },
-  { nombre: "Índice", para: "tu índice", raiz: 5, dip: 7, tip: 8, ancho: 0.66, t0: 0.44 },
-  { nombre: "Medio", para: "tu dedo medio", raiz: 9, dip: 11, tip: 12, ancho: 0.68, t0: 0.44 },
-  { nombre: "Anular", para: "tu anular", raiz: 13, dip: 15, tip: 16, ancho: 0.64, t0: 0.44 },
-  { nombre: "Meñique", para: "tu meñique", raiz: 17, dip: 19, tip: 20, ancho: 0.54, t0: 0.44 },
+  { nombre: "Pulgar", para: "tu pulgar", raiz: 2, dip: 3, tip: 4, ancho: 0.8, t0: 0.36 },
+  { nombre: "Índice", para: "tu índice", raiz: 5, dip: 7, tip: 8, ancho: 0.66, t0: 0.48 },
+  { nombre: "Medio", para: "tu dedo medio", raiz: 9, dip: 11, tip: 12, ancho: 0.68, t0: 0.48 },
+  { nombre: "Anular", para: "tu anular", raiz: 13, dip: 15, tip: 16, ancho: 0.64, t0: 0.48 },
+  { nombre: "Meñique", para: "tu meñique", raiz: 17, dip: 19, tip: 20, ancho: 0.54, t0: 0.48 },
 ];
-const LARGOS = { corto: 1.1, medio: 1.26, largo: 1.44 };
+const LARGOS = { natural: 1.02, medio: 1.18, largo: 1.4 };
 
 // ---------- Cuentas que en la version real hace el CODIGO del motor (regla 8) ----------
 // Cada uña vale la decima parte del precio de su diseño; las dos manos iguales son 10 uñas; se redondea hacia arriba a 10 pesos.
@@ -97,7 +97,7 @@ const estado = {
   idea: null,
   modo: null, // "camara" | "foto"
   pausado: false,
-  largo: "medio",
+  largo: "natural",
   ancho: 1,
   puntos: false,
   camara: "trasera",
@@ -138,12 +138,16 @@ async function bajarConAvance(url, alAvance) {
   for (const p of partes) { buf.set(p, o); o += p.length; }
   return buf;
 }
+const tiempos = { inicio: performance.now(), listo: 0, permiso: 0, primerCuadro: 0, pedido: 0 };
 async function cargar() {
   const barra = $("#avance span"), texto = $("#avance-texto");
   try {
-    const modelo = await bajarConAvance("modelo/hand_landmarker-float16-v1.task", (f) => { barra.style.width = `${Math.round(f * 85)}%`; });
+    // El modelo de la mano y el motor (wasm) bajan al mismo tiempo (el HTML ya los pidio con preload)
+    const [modelo, archivos] = await Promise.all([
+      bajarConAvance("modelo/hand_landmarker-float16-v1.task", (f) => { barra.style.width = `${Math.round(f * 80)}%`; }),
+      FilesetResolver.forVisionTasks(new URL("vendor/tasks-vision-0.10.35/wasm", location.href).href.replace(/\/$/, "")),
+    ]);
     texto.textContent = "Preparando el seguimiento de la mano…";
-    const archivos = await FilesetResolver.forVisionTasks(new URL("vendor/tasks-vision-0.10.35/wasm", location.href).href.replace(/\/$/, ""));
     const opciones = (d) => ({
       baseOptions: { modelAssetBuffer: modelo.slice(), delegate: d },
       runningMode: "VIDEO",
@@ -154,6 +158,8 @@ async function cargar() {
     });
     try { marcador = await HandLandmarker.createFromOptions(archivos, opciones("GPU")); delegado = "GPU"; }
     catch { marcador = await HandLandmarker.createFromOptions(archivos, opciones("CPU")); delegado = "CPU"; }
+    await calentar();
+    tiempos.listo = performance.now();
     barra.style.width = "100%";
     texto.textContent = "";
     $("#avance").classList.add("oculto");
@@ -165,6 +171,18 @@ async function cargar() {
     texto.textContent = "No pude preparar el probador en este navegador. Prueba en Chrome o Safari actualizados.";
     console.error(e);
   }
+}
+
+// La primera deteccion prepara la tarjeta de video y tarda: se hace aqui, mientras la clienta lee, y no al abrir la camara
+async function calentar() {
+  const img = new Image();
+  img.src = "fotos/mano-ejemplo.webp";
+  await img.decode();
+  const cv = document.createElement("canvas");
+  cv.width = 368;
+  cv.height = 672;
+  cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+  for (let k = 0; k < 2; k++) { ts = Math.max(performance.now(), ts + 1); marcador.detectForVideo(cv, ts); }
 }
 
 // ---------- Camara y foto ----------
@@ -186,6 +204,9 @@ async function abrirCamara() {
     return;
   }
   pararCamara();
+  tiempos.permiso = 0;
+  tiempos.primerCuadro = 0;
+  tiempos.pedido = performance.now();
   try {
     flujo = await navigator.mediaDevices.getUserMedia({
       audio: false,
@@ -197,6 +218,8 @@ async function abrirCamara() {
       : "No pude abrir la cámara. Prueba en Chrome o Safari, o usa una foto de tu mano.";
     return;
   }
+  tiempos.permiso = performance.now() - tiempos.pedido;
+  avisoFijo = "Abriendo la cámara…";
   video.srcObject = flujo;
   try { await video.play(); } catch { /* algunos navegadores ya lo reproducen solos */ }
   pista = flujo.getVideoTracks()[0];
@@ -280,8 +303,8 @@ function geometriaUna(p, i, escala) {
   if (i === 0) {
     // El pulgar casi siempre se ve de lado: su uña queda hacia afuera de la mano, lejos del indice
     const lejos = Math.sign((c.x - p[5].x) * v.x + (c.y - p[5].y) * v.y) || 1;
-    c.x += v.x * lejos * W * 0.28;
-    c.y += v.y * lejos * W * 0.28;
+    c.x += v.x * lejos * W * 0.12;
+    c.y += v.y * lejos * W * 0.12;
   }
   return { c, u, v, W, L, angulo: Math.atan2(uy, ux) };
 }
@@ -469,6 +492,7 @@ function ciclo() {
     ultimoTiempoVideo = video.currentTime;
     ajustarTamano(video.videoWidth, video.videoHeight);
     fctx.drawImage(video, 0, 0, fondo.width, fondo.height);
+    if (!tiempos.primerCuadro) { tiempos.primerCuadro = performance.now() - tiempos.pedido; avisoFijo = null; }
     detectar();
     cuadros++;
     if (cuadros % 15 === 0) medirLuz();
@@ -492,6 +516,8 @@ function escribirMedidas() {
     `Cuadros por segundo: ${vivo ? medidas.cps : "en pausa"}`,
     `Modelo por cuadro: ${medidas.msModelo.toFixed(1)} ms (${delegado})`,
     `Imagen: ${fondo.width} x ${fondo.height}`,
+    `Listo para usar: ${tiempos.listo ? ((tiempos.listo - tiempos.inicio) / 1000).toFixed(1) : "?"} s después de abrir la página`,
+    `Cámara: permiso ${(tiempos.permiso / 1000).toFixed(1)} s, primera imagen ${(tiempos.primerCuadro / 1000).toFixed(1)} s`,
     `Luz: ${Math.round(lumaEscena * 100)}%`,
     `Mano: ${mano ? `la veo (${mano.etiqueta || "?"})` : "no la veo"}`,
   ].join("\n");
@@ -687,6 +713,7 @@ function conectar() {
     actualizarPausa();
     sucio = true;
   });
+  $("#btn-salir").addEventListener("click", salir);
   $("#btn-deshacer").addEventListener("click", deshacer);
   $("#btn-deshacer2").addEventListener("click", deshacer);
   $("#btn-listo").addEventListener("click", () => { estado.seleccion = null; pintarHoja(); });
@@ -715,6 +742,18 @@ function conectar() {
   });
   lienzo.addEventListener("click", tocarEscena);
   document.addEventListener("visibilitychange", () => { if (document.hidden && estado.modo === "camara") { estado.pausado = true; actualizarPausa(); } });
+}
+function salir() {
+  pararCamara();
+  video.srcObject = null;
+  Object.assign(estado, { modo: null, pausado: false, seleccion: null });
+  mano = null;
+  avisoFijo = null;
+  for (const id of ["#ajustes", "#eleccion"]) $(id).classList.add("oculto");
+  $("#probador").classList.add("oculto");
+  $("#inicio").classList.remove("oculto");
+  $("#avance-texto").textContent = "";
+  pintarHoja();
 }
 function pintarAjustes() {
   const valores = { largo: estado.largo, ancho: String(estado.ancho), puntos: estado.puntos ? "si" : "no", camara: estado.camara };

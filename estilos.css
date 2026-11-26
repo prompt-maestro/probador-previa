@@ -51,6 +51,8 @@ h1 { margin: 0 0 10px; font-size: 26px; line-height: 1.15; font-weight: 700; }
 .pastilla { pointer-events: auto; display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 999px;
   padding: 8px 13px; background: rgba(20,20,24,.62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   font-size: 14px; font-weight: 600; cursor: pointer; }
+.derecha { display: flex; gap: 8px; }
+.pastilla.redonda { padding: 8px 11px; }
 .punto-vivo { width: 8px; height: 8px; border-radius: 50%; background: #ff4d5e; }
 .pausado .punto-vivo { border-radius: 1px; width: 8px; height: 10px; background: none;
   border-left: 3px solid #fff; border-right: 3px solid #fff; }
